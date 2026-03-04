@@ -1,0 +1,113 @@
+.architecture-diagram-page {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #0f172a;
+}
+
+.architecture-diagram-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  flex-shrink: 0;
+}
+
+.architecture-diagram-header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.architecture-diagram-header a {
+  color: white;
+  text-decoration: none;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.2);
+  transition: background 0.2s;
+}
+
+.architecture-diagram-header a:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.architecture-diagram-flow {
+  flex: 1;
+  min-height: 0;
+}
+
+.architecture-diagram-error {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  color: #e2e8f0;
+  text-align: center;
+}
+
+.architecture-diagram-error h1 {
+  margin-bottom: 1rem;
+  font-size: 1.5rem;
+}
+
+.architecture-diagram-error p {
+  margin-bottom: 1.5rem;
+  color: #94a3b8;
+}
+
+.architecture-diagram-error a {
+  color: #10b981;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.architecture-diagram-error a:hover {
+  text-decoration: underline;
+}
+
+.react-flow__node {
+  font-size: 12px;
+}
+
+.react-flow__node-default {
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+}
+
+.react-flow__node-default.selected {
+  border-color: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
+}
+
+.react-flow__edge-path {
+  stroke: #64748b;
+}
+
+.react-flow__controls {
+  button {
+    background: #1e293b !important;
+    border-color: #334155 !important;
+    color: #e2e8f0 !important;
+  }
+  button:hover {
+    background: #334155 !important;
+  }
+}
+
+.react-flow__minimap {
+  background: #1e293b !important;
+}
+
+.react-flow__background {
+  background: #0f172a;
+}

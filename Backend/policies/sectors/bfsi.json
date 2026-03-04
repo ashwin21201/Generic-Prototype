@@ -1,0 +1,189 @@
+{
+  "policy_metadata": {
+    "policy_id": "bfsi_baseline_v1",
+    "policy_name": "BFSI Sector Baseline Policy",
+    "sector": "BFSI",
+    "region": "India",
+    "version": "1.0.0",
+    "status": "active",
+    "priority": 1,
+    "enforcement_mode": "strict",
+    "created_at": "2026-02-26T00:00:00Z",
+    "updated_at": "2026-02-26T00:00:00Z",
+    "description": "Baseline compliance policy for BFSI workloads"
+  },
+  "applicability": {
+    "environments": ["production"],
+    "business_criticality": ["medium", "high"],
+    "cloud_providers": ["aws", "azure", "gcp"]
+  },
+  "rules": [
+    {
+      "rule_id": "data_encryption_at_rest_required",
+      "description": "All data storage must support encryption at rest",
+      "rule_type": "capability",
+      "target_category": "data",
+      "severity": "critical",
+      "condition": {
+        "field": "data_encryption_at_rest",
+        "operator": "equals",
+        "value": true
+      },
+      "auto_remediation": {
+        "enabled": true,
+        "action": "add_or_replace_block",
+        "parameters": {
+          "required_capability": "data_encryption_at_rest"
+        }
+      }
+    },
+    {
+      "rule_id": "data_encryption_in_transit_required",
+      "description": "All data in transit must be encrypted",
+      "rule_type": "capability",
+      "target_category": "data",
+      "severity": "critical",
+      "condition": {
+        "field": "data_encryption_in_transit",
+        "operator": "equals",
+        "value": true
+      }
+    },
+    {
+      "rule_id": "data_multi_region_required",
+      "description": "Data must be deployed in at least 2 distinct regions",
+      "rule_type": "deployment",
+      "target_category": "data",
+      "severity": "critical",
+      "condition": {
+        "field": "region_count",
+        "operator": "greater_or_equal",
+        "value": 2
+      },
+      "additional_constraints": {
+        "replication_required": true,
+        "replication_mode": "active_active",
+        "failure_tolerance": "single_region_failure"
+      },
+      "auto_remediation": {
+        "enabled": true,
+        "action": "add_replication_region",
+        "parameters": {
+          "min_regions": 2
+        }
+      }
+    },
+    {
+      "rule_id": "no_public_database_access",
+      "description": "Databases must not be publicly accessible",
+      "rule_type": "topology",
+      "target_category": "data",
+      "severity": "critical",
+      "condition": {
+        "field": "public_access",
+        "operator": "equals",
+        "value": false
+      }
+    },
+    {
+      "rule_id": "waf_required_for_public_api",
+      "description": "Public APIs must be protected by WAF",
+      "rule_type": "relationship",
+      "target_category": "api_gateway",
+      "severity": "high",
+      "condition": {
+        "must_be_preceded_by": "waf_layer"
+      },
+      "auto_remediation": {
+        "enabled": true,
+        "action": "insert_block_before",
+        "parameters": {
+          "block": "waf_layer"
+        }
+      }
+    },
+    {
+      "rule_id": "latency_threshold",
+      "description": "P95 latency must be under 300ms",
+      "rule_type": "quantitative",
+      "target_category": "compute",
+      "severity": "medium",
+      "condition": {
+        "field": "latency_p95_ms",
+        "operator": "less_or_equal",
+        "value": 300
+      }
+    },
+    {
+      "rule_id": "data_residency_constraint",
+      "description": "Data must reside within allowed regions",
+      "rule_type": "deployment",
+      "target_category": "data",
+      "severity": "critical",
+      "condition": {
+        "field": "region",
+        "operator": "in",
+        "value": ["ap-south-1", "ap-southeast-1"]
+      }
+    },
+    {
+      "rule_id": "audit_logging_required",
+      "description": "Audit logging must be enabled",
+      "rule_type": "capability",
+      "target_category": "security",
+      "severity": "high",
+      "condition": {
+        "field": "audit_logging",
+        "operator": "equals",
+        "value": true
+      }
+    }
+  ],
+  "forbidden_patterns": [
+    {
+      "pattern_id": "single_point_of_failure_db",
+      "description": "Single-region database deployment is not allowed",
+      "detection_logic": {
+        "category": "data",
+        "region_count": 1
+      },
+      "severity": "critical"
+    },
+    {
+      "pattern_id": "public_database",
+      "description": "Database with public access is forbidden",
+      "detection_logic": {
+        "category": "data",
+        "public_access": true
+      },
+      "severity": "critical"
+    }
+  ],
+  "mandatory_blocks": [
+    {
+      "block_id": "centralized_logging",
+      "reason": "Audit logging required for BFSI"
+    },
+    {
+      "block_id": "key_management_service",
+      "reason": "Encryption key control required"
+    }
+  ],
+  "policy_exceptions": [
+    {
+      "exception_id": "non_production_waiver",
+      "applies_to": ["non_production"],
+      "expires_at": "2026-12-31T00:00:00Z"
+    }
+  ],
+  "evaluation_strategy": {
+    "conflict_resolution": "highest_priority_wins",
+    "rule_aggregation": "all_must_pass",
+    "custom_plugins_allowed": true
+  },
+  "reporting": {
+    "generate_violation_report": true,
+    "include_auto_remediation_details": true,
+    "include_risk_score": true
+  }
+}
