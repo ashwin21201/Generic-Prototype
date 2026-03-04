@@ -9,79 +9,53 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import './ArchitectureDiagram.css'
+import GroupNode from './GroupNode'
 
-const CATEGORY_ORDER = {
-  external: 0,
-  security: 1,
-  network: 2,
-  compute: 3,
-  cache: 4,
-  messaging: 5,
-  data: 6,
-  storage: 7,
-  observability: 8,
-  data_processing: 9,
-}
-
-function getCategoryLevel(category) {
-  if (category && CATEGORY_ORDER.hasOwnProperty(category)) {
-    return CATEGORY_ORDER[category]
-  }
-  return 10
-}
-
-function buildLayout(nodes, edges) {
-  const byCategory = {}
-  nodes.forEach((n) => {
-    const cat = n.category || 'other'
-    if (!byCategory[cat]) byCategory[cat] = []
-    byCategory[cat].push(n)
-  })
-  const categoryKeys = Object.keys(byCategory).sort(
-    (a, b) => getCategoryLevel(a) - getCategoryLevel(b)
-  )
-  const positions = {}
-  let y = 0
-  const xGap = 220
-  const yGap = 140
-  categoryKeys.forEach((cat) => {
-    const list = byCategory[cat]
-    const width = list.length * xGap
-    let x = -width / 2 + xGap / 2
-    list.forEach((n) => {
-      positions[n.id] = { x, y }
-      x += xGap
-    })
-    y += yGap
-  })
-  return positions
-}
-
+/**
+ * Map API graph (with backend-computed layout) to ReactFlow nodes/edges.
+ * Supports VPC/group container and parent-child: parent_node, extent, type "group".
+ */
 function mapToReactFlow(graphData) {
   const rawNodes = graphData.nodes || []
   const rawEdges = graphData.edges || []
-  const positions = buildLayout(rawNodes, rawEdges)
 
-  const nodes = rawNodes.map((n) => ({
-    id: n.id,
-    data: {
-      label: n.data?.label || n.id,
-      ...(n.data?.description && { description: n.data.description }),
-      category: n.category,
-      region: n.region,
-      // Include resolved products if available (for hover info)
-      ...(n.resolved_products && { products: n.resolved_products }),
-    },
-    position: positions[n.id] || { x: 0, y: 0 },
-    type: 'default',
-  }))
+  const nodes = rawNodes.map((n) => {
+    const isGroup = (n.type || n.category) === 'group' || n.id === 'vpc_container'
+    const position = n.position && typeof n.position.x === 'number' && typeof n.position.y === 'number'
+      ? { x: n.position.x, y: n.position.y }
+      : { x: 0, y: 0 }
+    const parentNode = n.parent_node ?? n.parentNode ?? undefined
+    const extent = n.extent === 'parent' ? 'parent' : undefined
+
+    return {
+      id: n.id,
+      data: {
+        label: n.data?.label || (isGroup ? 'VPC' : n.id),
+        ...(n.data?.description && { description: n.data.description }),
+        category: n.category,
+        region: n.region,
+        ...(n.resolved_products && { products: n.resolved_products }),
+      },
+      position,
+      type: isGroup ? 'group' : 'default',
+      ...(parentNode && { parentNode, extent: extent || 'parent' }),
+      ...(isGroup && n.style && {
+        style: {
+          width: n.style.width,
+          height: n.style.height,
+          ...n.style,
+        },
+      }),
+    }
+  })
 
   const edges = rawEdges.map((e) => ({
     id: e.id,
     source: e.from ?? e.from_node ?? e.source,
     target: e.to ?? e.target,
     type: 'smoothstep',
-    markerEnd: { type: MarkerType.ArrowClosed },
+    style: { stroke: '#000' },
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#000' },
   }))
 
   return { nodes, edges }
@@ -130,9 +104,8 @@ export default function ArchitectureDiagram() {
           }
           const result = JSON.parse(raw)
           setTitle(result.architecture_id ? `Architecture: ${result.architecture_id}` : 'Architecture Diagram')
-          
-          // Extract graph from result
-          const graphData = result.graph || {}
+          // Use resolved_architecture.graph (has backend layout + products); fallback to result.graph
+          const graphData = result.resolved_architecture?.graph || result.graph || {}
           const { nodes: n, edges: e } = mapToReactFlow(graphData)
           setNodes(n)
           setEdges(e)
@@ -147,7 +120,7 @@ export default function ArchitectureDiagram() {
           if (raw) {
             const result = JSON.parse(raw)
             setTitle(result.architecture_id ? `Architecture: ${result.architecture_id}` : 'Architecture Diagram')
-            const graphData = result.graph || {}
+            const graphData = result.resolved_architecture?.graph || result.graph || {}
             const { nodes: n, edges: e } = mapToReactFlow(graphData)
             setNodes(n)
             setEdges(e)
@@ -203,6 +176,7 @@ export default function ArchitectureDiagram() {
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          nodeTypes={{ group: GroupNode }}
           fitView
           fitViewOptions={{ padding: 0.2 }}
           minZoom={0.1}

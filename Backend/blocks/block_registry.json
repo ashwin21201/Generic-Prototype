@@ -32,6 +32,14 @@
         "min_cpu": 2,
         "min_ram_gb": 8,
         "disk_gb_default": 100
+      },
+      "intent_field_mappings": [
+        { "intent_path": "non_functional_requirements.expected_rps_peak", "maps_to": "rps", "required": false, "default_value": 1000 },
+        { "intent_path": "non_functional_requirements.horizontal_scaling_required", "maps_to": "enable_ha", "required": false, "default_value": false }
+      ],
+      "sizing_formulas": {
+        "cpu_count": "max(min_cpu, ceil(rps / rps_per_cpu))",
+        "ram_gb": "max(min_ram_gb, ceil(rps / rps_per_cpu) * ram_per_cpu_gb)"
       }
     },
     {

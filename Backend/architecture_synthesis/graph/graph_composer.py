@@ -1,19 +1,38 @@
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from .graph_schemas import GraphTopologyJSON, Node, Edge, NodeData, NodeConfig
 from ..blocks.block_schemas import BlockDefinition, DeploymentTopology
 
 logger = logging.getLogger(__name__)
 
 
+def _apply_formula_sizing(
+    block: BlockDefinition,
+    intent: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    """When block has sizing_formulas and intent, resolve variables and evaluate (§6)."""
+    if not block.sizing_formulas or not intent:
+        return None
+    try:
+        from ..engines import resolve_variable_context, evaluate_sizing_formulas
+        ctx = resolve_variable_context(intent, block)
+        evaluated = evaluate_sizing_formulas(block.sizing_formulas, ctx)
+        if evaluated:
+            return evaluated
+    except Exception as e:
+        logger.warning("Formula sizing failed for block %s: %s", block.block_id, e)
+    return None
+
+
 class GraphComposer:
-    """Build graph topology from blocks and deployment topology"""
+    """Build graph topology from blocks and deployment topology (Configurator §12)."""
     
     def compose(
         self,
         blocks: List[BlockDefinition],
         deployment_topology: DeploymentTopology,
-        topology_constraints: Optional[List[Dict]] = None
+        topology_constraints: Optional[List[Dict]] = None,
+        intent: Optional[Dict[str, Any]] = None,
     ) -> GraphTopologyJSON:
         """
         Compose a graph from blocks and topology.
@@ -22,6 +41,7 @@ class GraphComposer:
             blocks: List of block definitions
             deployment_topology: Deployment topology metadata
             topology_constraints: Optional topology constraints
+            intent: Optional Master Request / Intent JSON for formula-based sizing (§6)
             
         Returns:
             GraphTopologyJSON with nodes and edges
@@ -69,7 +89,7 @@ class GraphComposer:
                         label=self._generate_label(block, i, num_instances),
                         description=f"{block.block_id} instance"
                     ),
-                    config=self._generate_config(block, deployment_topology, role)
+                    config=self._generate_config(block, deployment_topology, role, intent=intent)
                 )
                 
                 nodes.append(node)
@@ -134,30 +154,54 @@ class GraphComposer:
         self,
         block: BlockDefinition,
         deployment_topology: DeploymentTopology,
-        role: Optional[str] = None
+        role: Optional[str] = None,
+        intent: Optional[Dict[str, Any]] = None,
     ) -> NodeConfig:
-        """Generate configuration for a node"""
+        """Generate configuration for a node (§6: benchmark defaults or formula-based sizing)."""
         config = NodeConfig()
-        
-        # Set basic defaults from resource benchmarks
+        formula_spec = _apply_formula_sizing(block, intent or {})
+
+        if formula_spec:
+            # Apply formula results to config (map formula keys to NodeConfig)
+            if "cpu_count" in formula_spec:
+                config.cpu_count = int(formula_spec["cpu_count"])
+            if "ram_gb" in formula_spec:
+                config.ram_gb = int(formula_spec["ram_gb"])
+            if "disk_gb" in formula_spec:
+                config.disk_gb = int(formula_spec["disk_gb"])
+            if "min_instances" in formula_spec:
+                config.min_instances = int(formula_spec["min_instances"])
+            if "max_instances" in formula_spec:
+                config.max_instances = int(formula_spec["max_instances"])
+            if "instances" in formula_spec:
+                n = int(formula_spec["instances"])
+                config.min_instances = config.min_instances or n
+                config.max_instances = config.max_instances or n
+
+        # Fallback: benchmark defaults when no formula or formula didn't set a field
         if block.resource_benchmarks:
-            config.cpu_count = block.resource_benchmarks.min_cpu
-            config.ram_gb = block.resource_benchmarks.min_ram_gb
-            config.disk_gb = block.resource_benchmarks.disk_gb_default
-        
+            if config.cpu_count is None:
+                config.cpu_count = block.resource_benchmarks.min_cpu
+            if config.ram_gb is None:
+                config.ram_gb = block.resource_benchmarks.min_ram_gb
+            if config.disk_gb is None and block.resource_benchmarks.disk_gb_default is not None:
+                config.disk_gb = block.resource_benchmarks.disk_gb_default
+
         # Compute-specific config
         if block.category == "compute":
             config.scale_type = "horizontal"
-            config.min_instances = 2 if deployment_topology.multi_az else 1
-            config.max_instances = 10
-        
+            if config.min_instances is None:
+                config.min_instances = 2 if deployment_topology.multi_az else 1
+            if config.max_instances is None:
+                config.max_instances = 10
+
         # Data-specific config
         if block.category == "data":
             config.public_access = False
             config.multi_az = deployment_topology.multi_az
             if role:
                 config.replication_role = role
-        
+
         return config
     
     def _create_edges(

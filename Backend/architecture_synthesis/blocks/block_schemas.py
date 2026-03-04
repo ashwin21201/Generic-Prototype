@@ -2,6 +2,14 @@ from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field
 
 
+class IntentFieldMapping(BaseModel):
+    """Maps an intent JSON path to a variable name for formula evaluation (Configurator §5)."""
+    intent_path: str  # e.g. "non_functional_requirements.expected_rps_peak"
+    maps_to: str      # e.g. "rps"
+    required: bool = False
+    default_value: Optional[Any] = None
+
+
 class ResourceBenchmarks(BaseModel):
     """Resource benchmarks for sizing calculations"""
     rps_per_cpu: Optional[int] = None
@@ -43,7 +51,7 @@ class Interfaces(BaseModel):
 
 
 class BlockDefinition(BaseModel):
-    """Architecture building block definition"""
+    """Architecture building block definition (Configurator §5, §17)."""
     block_id: str
     category: str
     capabilities_provided: Dict[str, bool] = Field(default_factory=dict)
@@ -57,6 +65,9 @@ class BlockDefinition(BaseModel):
     compliance_tags: List[str] = Field(default_factory=list)
     complexity_score: int = 5
     resource_benchmarks: Optional[ResourceBenchmarks] = None
+    # Configurator: data-driven field mapping and sizing (§5, §6)
+    intent_field_mappings: List[IntentFieldMapping] = Field(default_factory=list)
+    sizing_formulas: Dict[str, str] = Field(default_factory=dict)  # e.g. {"cpu_count": "max(min_cpu, ceil(rps / rps_per_cpu))"}
 
 
 class BlockRegistry(BaseModel):

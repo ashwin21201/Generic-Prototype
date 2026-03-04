@@ -395,6 +395,7 @@ from architecture_synthesis.blocks import (
     BlockRegistryStore, BlockSelector, CompatibilityResolver
 )
 from architecture_synthesis.graph import GraphComposer
+from architecture_synthesis.graph.layout_engine import apply_layout
 from architecture_synthesis.compliance import RuleEvaluationEngine
 from architecture_synthesis.resolution import ProductCatalogStore, ProductResolutionEngine
 
@@ -437,7 +438,7 @@ def synthesize_architecture():
         if not policies:
             raise HTTPException(
                 status_code=400,
-                detail=f"No policy found for sector: {sector}. Supported sectors: BFSI, Fintech."
+                detail=f"No policy found for sector: {sector}. Supported sectors: BFSI, Fintech, Healthcare."
             )
         
         policy_merger = PolicyMerger()
@@ -461,12 +462,13 @@ def synthesize_architecture():
         )
         logger.info(f"Resolved to {len(resolved_blocks)} blocks with {len(warnings)} warnings")
         
-        # Step 5: Compose graph
+        # Step 5: Compose graph (pass intent for formula-based sizing — Configurator §6)
         logger.info("Composing graph...")
         graph_composer = GraphComposer()
         graph = graph_composer.compose(
             resolved_blocks,
-            selected_architecture.deployment_topology
+            selected_architecture.deployment_topology,
+            intent=master_request,
         )
         logger.info(f"Created graph with {len(graph.nodes)} nodes and {len(graph.edges)} edges")
         
@@ -488,6 +490,10 @@ def synthesize_architecture():
             master_request.get("deployment_preferences")
         )
         logger.info("Product resolution complete")
+        
+        # Step 7b: Apply layout (positions) so frontend only renders
+        apply_layout(resolved_architecture.graph)
+        logger.info("Layout applied")
         
         # Step 8: Build complete architecture result
         result = {

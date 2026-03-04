@@ -3,7 +3,7 @@
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #0f172a;
+  background: #ffffff;
 }
 
 .architecture-diagram-header {
@@ -89,8 +89,37 @@
   box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
 }
 
+/* VPC / group container - visible box with label */
+.react-flow__node-group .architecture-group-node {
+  width: 100%;
+  height: 100%;
+  min-width: 120px;
+  min-height: 80px;
+  background: rgba(30, 41, 59, 0.6);
+  border: 2px solid #475569;
+  border-radius: 12px;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.react-flow__node-group .architecture-group-node.selected {
+  border-color: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25);
+}
+
+.react-flow__node-group .architecture-group-node__label {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .react-flow__edge-path {
-  stroke: #64748b;
+  stroke: #000000 !important;
 }
 
 .react-flow__controls {
@@ -109,5 +138,5 @@
 }
 
 .react-flow__background {
-  background: #0f172a;
+  background: #ffffff;
 }
