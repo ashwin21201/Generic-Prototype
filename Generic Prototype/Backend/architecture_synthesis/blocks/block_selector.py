@@ -126,12 +126,13 @@ class BlockSelector:
         
         # Data storage needs
         data_types = data_req.get("data_types", [])
+        data_types_norm = [str(x).strip().lower() for x in (data_types or [])]
         logger.info(f"Data types from request: {data_types}")
-        if "structured" in data_types or "relational" in data_types:
+        if "structured" in data_types_norm or "relational" in data_types_norm:
             categories.add("data")
             logger.info("Added 'data' category due to data_types requirement")
         
-        if "unstructured" in data_req.get("data_types", []):
+        if "unstructured" in data_types_norm:
             categories.add("storage")
         
         # Real-time or async processing → messaging
@@ -162,18 +163,25 @@ class BlockSelector:
         data_req = master_request.get("data_requirements", {})
         deployment_pref = master_request.get("deployment_preferences", {})
         non_func_req = master_request.get("non_functional_requirements", {})
+        data_types_norm = [str(x).strip().lower() for x in (data_req.get("data_types", []) or [])]
         
         for category in categories:
             caps = {}
             
             # Security requirements
-            if category in ["data", "storage", "cache"]:
+            if category in ["data", "storage"]:
                 if security_req.get("data_encryption_at_rest"):
                     caps["data_encryption_at_rest"] = True
                 if security_req.get("data_encryption_in_transit"):
                     caps["data_encryption_in_transit"] = True
                 if security_req.get("audit_logging_required"):
                     caps["audit_logging"] = True
+            # Cache: typically needs encryption but not audit logging
+            if category == "cache":
+                if security_req.get("data_encryption_at_rest"):
+                    caps["data_encryption_at_rest"] = True
+                if security_req.get("data_encryption_in_transit"):
+                    caps["data_encryption_in_transit"] = True
             
             # Compute requirements
             if category == "compute":
@@ -193,7 +201,7 @@ class BlockSelector:
                     caps["eventual_consistency"] = True
                 
                 # Check for structured or relational data types
-                if "structured" in data_req.get("data_types", []) or "relational" in data_req.get("data_types", []):
+                if "structured" in data_types_norm or "relational" in data_types_norm:
                     caps["structured_storage"] = True
                 
                 if non_func_req.get("availability_target_percent", 0) >= 99.9:

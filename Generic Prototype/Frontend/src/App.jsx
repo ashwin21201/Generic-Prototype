@@ -81,13 +81,29 @@ function App() {
       if (isJsonResponse) {
         // JSON detected - don't show in chat
         setIsComplete(true)
+        try {
+          const parsed = JSON.parse(cleanContent)
+          console.groupCollapsed('[Intent] JSON detected')
+          console.log('request_id:', parsed?.request_metadata?.request_id)
+          console.log('sector:', parsed?.request_metadata?.sector)
+          console.log('business_criticality:', parsed?.request_metadata?.business_criticality)
+          console.log('application_type:', parsed?.functional_requirements?.application_type)
+          console.log('expected_rps_peak:', parsed?.non_functional_requirements?.expected_rps_peak)
+          console.log('monthly_budget_usd:', parsed?.budget_constraints?.monthly_budget_usd)
+          console.groupEnd()
+        } catch {
+          // ignore
+        }
         // Auto-save intent to backend so "Generate Architecture" works without clicking "View JSON"
         try {
-          await fetch('/api/intent-json', {
+          console.groupCollapsed('[Intent] Saving to backend (/api/intent-json)')
+          const resp = await fetch('/api/intent-json', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content: assistantMessage.content })
           })
+          console.log('status:', resp.status, resp.ok ? 'ok' : 'not ok')
+          console.groupEnd()
         } catch (e) {
           console.warn('Failed to auto-save intent to backend', e)
         }
@@ -182,6 +198,7 @@ function App() {
   const synthesizeArchitecture = async () => {
     setIsSynthesizing(true)
     try {
+      console.groupCollapsed('[Synthesize] POST /api/synthesize')
       const response = await fetch('/api/synthesize', {
         method: 'POST',
         headers: {
@@ -190,10 +207,19 @@ function App() {
       })
 
       if (!response.ok) {
+        console.log('status:', response.status, 'not ok')
+        console.groupEnd()
         throw new Error(`HTTP error! status: ${response.status}`)
       }
 
       const data = await response.json()
+      console.log('status:', response.status, 'ok')
+      console.log('architecture_id:', data?.architecture_id)
+      console.log('pattern:', data?.architecture_pattern, 'strategy:', data?.layout_strategy)
+      console.log('selected_blocks:', data?.selected_architecture?.selected_blocks?.length, data?.selected_architecture?.selected_blocks)
+      console.log('graph nodes:', data?.graph?.nodes?.length, 'edges:', data?.graph?.edges?.length)
+      console.log('resolved graph nodes:', data?.resolved_architecture?.graph?.nodes?.length, 'edges:', data?.resolved_architecture?.graph?.edges?.length)
+      console.groupEnd()
       setArchitectureResult(data)
       sessionStorage.setItem('architectureResult', JSON.stringify(data))
       window.open('/architecture', '_blank')

@@ -10,10 +10,11 @@ import ReactFlow, {
 import 'reactflow/dist/style.css'
 import './ArchitectureDiagram.css'
 import GroupNode from './GroupNode'
+import ArchitectureNode from './ArchitectureNode'
 
 /**
  * Map API graph (with backend-computed layout) to ReactFlow nodes/edges.
- * Supports VPC/group container and parent-child: parent_node, extent, type "group".
+ * Supports VPC/group container, parent_node/extent, and semantic shape (shield, cloud, circle, etc.).
  */
 function mapToReactFlow(graphData) {
   const rawNodes = graphData.nodes || []
@@ -30,14 +31,18 @@ function mapToReactFlow(graphData) {
     return {
       id: n.id,
       data: {
-        label: n.data?.label || (isGroup ? 'VPC' : n.id),
-        ...(n.data?.description && { description: n.data.description }),
+        label: (n.data && n.data.label) || (isGroup ? 'VPC' : n.id),
+        ...(n.data && n.data.description && { description: n.data.description }),
         category: n.category,
         region: n.region,
         ...(n.resolved_products && { products: n.resolved_products }),
+        ...(n.semantic_role && { semantic_role: n.semantic_role }),
+        ...(n.placement_type && { placement_type: n.placement_type }),
+        shape: n.shape || 'rectangle',
+        ...(n.flow_stage != null && { flow_stage: n.flow_stage }),
       },
       position,
-      type: isGroup ? 'group' : 'default',
+      type: isGroup ? 'group' : 'architecture',
       ...(parentNode && { parentNode, extent: extent || 'parent' }),
       ...(isGroup && n.style && {
         style: {
@@ -67,6 +72,7 @@ export default function ArchitectureDiagram() {
   const [error, setError] = useState(null)
   const [title, setTitle] = useState('Architecture Diagram')
   const [loading, setLoading] = useState(true)
+  const [viewMode, setViewMode] = useState('logical') // logical | topology
 
   useEffect(() => {
     const fetchArchitectureData = async () => {
@@ -74,11 +80,21 @@ export default function ArchitectureDiagram() {
         setLoading(true)
         
         // Try to fetch from API first (optimized flow)
-        const graphResponse = await fetch('/api/architecture/graph-with-products')
+        const graphResponse = await fetch(`/api/architecture/graph-with-products?view=${encodeURIComponent(viewMode)}`)
         
         if (graphResponse.ok) {
           // API available - use optimized flow
           const graphData = await graphResponse.json()
+          console.groupCollapsed('[Diagram] Loaded graph-with-products')
+          console.log('nodes:', graphData?.nodes?.length, 'edges:', graphData?.edges?.length)
+          const sample = (graphData?.nodes || []).slice(0, 12).map((n) => ({
+            id: n.id,
+            type: n.type,
+            category: n.category,
+            parent_node: n.parent_node,
+            shape: n.shape,
+          }))
+          console.table(sample)
           
           // Fetch architecture ID
           try {
@@ -92,6 +108,9 @@ export default function ArchitectureDiagram() {
           }
           
           const { nodes: n, edges: e } = mapToReactFlow(graphData)
+          console.log('mapped nodes:', n.length, 'mapped edges:', e.length)
+          console.log('groups:', n.filter((x) => x.type === 'group').length, 'parented:', n.filter((x) => !!x.parentNode).length)
+          console.groupEnd()
           setNodes(n)
           setEdges(e)
           setError(null)
@@ -105,8 +124,16 @@ export default function ArchitectureDiagram() {
           const result = JSON.parse(raw)
           setTitle(result.architecture_id ? `Architecture: ${result.architecture_id}` : 'Architecture Diagram')
           // Use resolved_architecture.graph (has backend layout + products); fallback to result.graph
-          const graphData = result.resolved_architecture?.graph || result.graph || {}
+          const graphData =
+            result?.views?.[viewMode]?.graph ||
+            result.resolved_architecture?.graph ||
+            result.graph ||
+            {}
+          console.groupCollapsed('[Diagram] Loaded graph from sessionStorage fallback')
+          console.log('nodes:', graphData?.nodes?.length, 'edges:', graphData?.edges?.length)
           const { nodes: n, edges: e } = mapToReactFlow(graphData)
+          console.log('mapped nodes:', n.length, 'mapped edges:', e.length)
+          console.groupEnd()
           setNodes(n)
           setEdges(e)
           setError(null)
@@ -139,7 +166,7 @@ export default function ArchitectureDiagram() {
     }
 
     fetchArchitectureData()
-  }, [setNodes, setEdges])
+  }, [setNodes, setEdges, viewMode])
 
   if (loading) {
     return (
@@ -168,7 +195,25 @@ export default function ArchitectureDiagram() {
     <div className="architecture-diagram-page">
       <div className="architecture-diagram-header">
         <h1>{title}</h1>
-        <a href="/">← Back to Questionnaire</a>
+        <div className="architecture-diagram-header__actions">
+          <div className="architecture-diagram-view-toggle">
+            <button
+              type="button"
+              className={viewMode === 'logical' ? 'active' : ''}
+              onClick={() => setViewMode('logical')}
+            >
+              Logical
+            </button>
+            <button
+              type="button"
+              className={viewMode === 'topology' ? 'active' : ''}
+              onClick={() => setViewMode('topology')}
+            >
+              Topology
+            </button>
+          </div>
+          <a href="/">← Back to Questionnaire</a>
+        </div>
       </div>
       <div className="architecture-diagram-flow">
         <ReactFlow
@@ -176,7 +221,7 @@ export default function ArchitectureDiagram() {
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
-          nodeTypes={{ group: GroupNode }}
+          nodeTypes={{ group: GroupNode, architecture: ArchitectureNode }}
           fitView
           fitViewOptions={{ padding: 0.2 }}
           minZoom={0.1}

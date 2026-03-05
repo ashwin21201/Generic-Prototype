@@ -70,6 +70,32 @@ class CompatibilityResolver:
         added_any = True
         max_iterations = 10
         iteration = 0
+
+        def _requirement_satisfied(requirement: str, resolved_ids: Set[str]) -> bool:
+            """Return True if requirement is already satisfied by any selected block."""
+            # Exact block id requirement
+            if self.block_registry.get_block(requirement):
+                return requirement in resolved_ids
+
+            req = (requirement or "").lower()
+            # Category layer requirements (e.g. network_layer, compute_layer)
+            if req.endswith("_layer"):
+                category = req.replace("_layer", "")
+                for bid in resolved_ids:
+                    b = self.block_registry.get_block(bid)
+                    if b and (b.category or "").lower() == category:
+                        return True
+                return False
+
+            # Network-ish requirements (e.g. private_network)
+            if "network" in req:
+                for bid in resolved_ids:
+                    b = self.block_registry.get_block(bid)
+                    if b and (b.category or "").lower() == "network":
+                        return True
+                return False
+
+            return False
         
         # Iteratively add dependencies until no more are needed
         while added_any and iteration < max_iterations:
@@ -84,18 +110,22 @@ class CompatibilityResolver:
                 
                 # Check required dependencies
                 for required_id in block.requires:
+                    if _requirement_satisfied(required_id, resolved):
+                        continue
+                    # If not satisfied, try to add a block that satisfies it.
                     if required_id not in resolved:
                         # Need to add this dependency
                         # Try to find a block that satisfies this requirement
                         dep_block = self._find_dependency_block(required_id)
                         
                         if dep_block:
-                            resolved.add(dep_block.block_id)
-                            added_any = True
-                            logger.info(f"Added required dependency: {dep_block.block_id} for {block_id}")
-                            warnings.append(CompatibilityWarning(
-                                f"Added required block '{dep_block.block_id}' as dependency of '{block_id}'"
-                            ))
+                            if dep_block.block_id not in resolved:
+                                resolved.add(dep_block.block_id)
+                                added_any = True
+                                logger.info(f"Added required dependency: {dep_block.block_id} for {block_id}")
+                                warnings.append(CompatibilityWarning(
+                                    f"Added required block '{dep_block.block_id}' as dependency of '{block_id}'"
+                                ))
                         else:
                             warnings.append(CompatibilityWarning(
                                 f"Could not find block to satisfy requirement '{required_id}' for '{block_id}'",

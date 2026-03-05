@@ -1,6 +1,7 @@
 import logging
 import os
 import json
+import copy
 from datetime import datetime
 from typing import List, Literal
 
@@ -334,6 +335,13 @@ latest_intent_json = None
 # Store the latest synthesized architecture in memory
 latest_synthesized_architecture = None
 
+def _safe_json_preview(obj, max_chars: int = 2000) -> str:
+    try:
+        s = json.dumps(obj, ensure_ascii=False, sort_keys=True)
+        return s if len(s) <= max_chars else (s[:max_chars] + f"... (truncated, {len(s)} chars)")
+    except Exception as e:
+        return f"<unserializable json: {e}>"
+
 @app.post("/api/intent-json")
 def save_intent_json(req: IntentJsonRequest):
     global latest_intent_json
@@ -358,6 +366,23 @@ def save_intent_json(req: IntentJsonRequest):
         intent_filename = f"{output_dir}/architecture_intent.json"
         with open(intent_filename, "w") as f:
             json.dump(json_data, f, indent=2)
+
+        # Debug snapshot (helps trace intent → blocks issues)
+        debug_intent_filename = f"{output_dir}/architecture_intent.debug.json"
+        try:
+            with open(debug_intent_filename, "w", encoding="utf-8") as f:
+                json.dump(json_data, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Failed writing intent debug snapshot: {e}")
+
+        md = json_data.get("request_metadata", {}) if isinstance(json_data, dict) else {}
+        logger.info(
+            "Intent saved. request_id=%s sector=%s criticality=%s preview=%s",
+            md.get("request_id"),
+            md.get("sector"),
+            md.get("business_criticality"),
+            _safe_json_preview(json_data),
+        )
         
         logger.info(f"Architecture Intent JSON saved to memory and file: {intent_filename}")
         
@@ -396,8 +421,12 @@ from architecture_synthesis.blocks import (
 )
 from architecture_synthesis.graph import GraphComposer
 from architecture_synthesis.graph.layout_engine import apply_layout
+from architecture_synthesis.graph.layout_strategy_selector import get_layout_strategy
+from architecture_synthesis.pattern import detect_architecture_pattern
+from architecture_synthesis.semantics import annotate_graph_semantics
 from architecture_synthesis.compliance import RuleEvaluationEngine
 from architecture_synthesis.resolution import ProductCatalogStore, ProductResolutionEngine
+from architecture_synthesis.graph.topology_expander import expand_for_topology
 
 
 @app.post("/api/synthesize")
@@ -427,6 +456,7 @@ def synthesize_architecture():
         
         master_request = latest_intent_json
         logger.info("Starting architecture synthesis")
+        logger.info("Master request preview: %s", _safe_json_preview(master_request))
         
         # Step 2: Load and merge policies
         logger.info("Loading policies...")
@@ -453,6 +483,15 @@ def synthesize_architecture():
         block_selector = BlockSelector(block_registry)
         selected_architecture = block_selector.select_blocks(master_request, merged_policy)
         logger.info(f"Selected {len(selected_architecture.selected_blocks)} blocks")
+        logger.info("Selected blocks: %s", selected_architecture.selected_blocks)
+        
+        # Step 3b: Architecture pattern detection (Brainboard-style: drives layout strategy)
+        architecture_pattern = detect_architecture_pattern(
+            selected_architecture.selected_blocks,
+            block_registry,
+        )
+        layout_strategy = get_layout_strategy(architecture_pattern)
+        logger.info(f"Pattern: {architecture_pattern.type}, layout strategy: {layout_strategy}")
         
         # Step 4: Resolve compatibility
         logger.info("Resolving compatibility...")
@@ -461,6 +500,9 @@ def synthesize_architecture():
             selected_architecture.selected_blocks
         )
         logger.info(f"Resolved to {len(resolved_blocks)} blocks with {len(warnings)} warnings")
+        logger.info("Resolved blocks: %s", [b.block_id for b in resolved_blocks])
+        if warnings:
+            logger.info("Compatibility warnings: %s", [{"message": w.message, "severity": w.severity} for w in warnings])
         
         # Step 5: Compose graph (pass intent for formula-based sizing — Configurator §6)
         logger.info("Composing graph...")
@@ -471,6 +513,8 @@ def synthesize_architecture():
             intent=master_request,
         )
         logger.info(f"Created graph with {len(graph.nodes)} nodes and {len(graph.edges)} edges")
+        logger.info("Graph node ids: %s", [n.id for n in graph.nodes])
+        logger.info("Graph node capability_refs: %s", [getattr(n, "capability_ref", None) for n in graph.nodes])
         
         # Step 6: Evaluate compliance
         logger.info("Evaluating compliance...")
@@ -490,18 +534,46 @@ def synthesize_architecture():
             master_request.get("deployment_preferences")
         )
         logger.info("Product resolution complete")
+        try:
+            rn = (resolved_architecture.graph or {}).get("nodes") or []
+            re = (resolved_architecture.graph or {}).get("edges") or []
+            logger.info("Resolved graph counts: nodes=%s edges=%s", len(rn), len(re))
+        except Exception:
+            pass
         
-        # Step 7b: Apply layout (positions) so frontend only renders
-        apply_layout(resolved_architecture.graph)
-        logger.info("Layout applied")
+        # Step 7a: Build two render views:
+        # - logical: horizontal (cleaner)
+        # - topology: vertical + expanded (more nodes/edges)
+        logical_graph = copy.deepcopy(resolved_architecture.graph)
+        topology_graph = copy.deepcopy(resolved_architecture.graph)
+
+        annotate_graph_semantics(logical_graph)
+        annotate_graph_semantics(topology_graph)
+        expand_for_topology(topology_graph, max_instances_per_compute=6)
+
+        # Step 7b: Apply layout (normalize called inside)
+        apply_layout(logical_graph, layout_strategy=layout_strategy, orientation="horizontal")
+        apply_layout(topology_graph, layout_strategy="layered_vertical", orientation="vertical")
+
+        # Keep backward compatibility: resolved_architecture.graph points to logical view
+        resolved_architecture.graph = logical_graph
+        logger.info("Layout applied (logical + topology)")
         
         # Step 8: Build complete architecture result
+        # Default graph = logical view
+        diagram_graph = logical_graph
         result = {
             "architecture_id": selected_architecture.architecture_id,
+            "architecture_pattern": architecture_pattern.type,
+            "layout_strategy": layout_strategy,
             "selected_architecture": jsonable_encoder(selected_architecture),
-            "graph": jsonable_encoder(graph),
+            "graph": jsonable_encoder(diagram_graph),
             "compliance_report": jsonable_encoder(compliance_report),
             "resolved_architecture": jsonable_encoder(resolved_architecture),
+            "views": {
+                "logical": {"graph": jsonable_encoder(logical_graph)},
+                "topology": {"graph": jsonable_encoder(topology_graph)},
+            },
             "warnings": [{"message": w.message, "severity": w.severity} for w in warnings]
         }
         
@@ -596,7 +668,7 @@ def get_architecture_graph():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/architecture/graph-with-products")
-def get_architecture_graph_with_products():
+def get_architecture_graph_with_products(view: str = "logical"):
     """
     Get architecture graph with resolved products embedded in nodes.
     This matches the plan document structure (Section 15.7).
@@ -608,7 +680,11 @@ def get_architecture_graph_with_products():
                 status_code=404,
                 detail="No synthesized architecture available. Please run synthesis first."
             )
-        # Return the resolved architecture graph (has products embedded in nodes)
+        v = (view or "logical").strip().lower()
+        views = latest_synthesized_architecture.get("views") or {}
+        if v in views and (views.get(v) or {}).get("graph") is not None:
+            return views[v]["graph"]
+        # Fallback: resolved architecture graph (logical view)
         return latest_synthesized_architecture["resolved_architecture"]["graph"]
     except HTTPException:
         raise
