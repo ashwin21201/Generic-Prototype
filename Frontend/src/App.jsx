@@ -23,7 +23,7 @@ function App() {
   useEffect(() => {
     const initialMessage = {
       role: 'assistant',
-      content: 'Welcome! I\'ll help you design your cloud architecture by asking up to 12 questions.\n\nLet\'s start:\n\nWhat industry is this project in?\nA) BFSI\nB) Healthcare\nC) E-commerce\nD) SaaS / Technology\nE) Other'
+      content: 'Welcome! I\'ll help you design your cloud architecture by asking up to 22 questions.\n\nLet\'s start:\n\nWhat industry does this system belong to?\nA) BFSI\nB) Healthcare\nC) E-commerce\nD) SaaS / Technology\nE) Media / Streaming\nF) Government\nG) Other'
     }
     setMessages([initialMessage])
   }, [])
@@ -134,7 +134,7 @@ function App() {
   }
 
   const parseOptions = (content) => {
-    const optionRegex = /^([A-E])\)\s*(.+)$/gm
+    const optionRegex = /^([A-G])\)\s*(.+)$/gm
     const options = []
     let match
     
@@ -149,7 +149,7 @@ function App() {
   }
 
   const removeOptionsFromContent = (content) => {
-    return content.replace(/^([A-E])\)\s*.+$/gm, '').trim()
+    return content.replace(/^([A-G])\)\s*.+$/gm, '').trim()
   }
 
   const viewIntentJson = async (jsonContent) => {
@@ -228,7 +228,7 @@ function App() {
             </div>
             {!isComplete && (
               <div className="badge badge-progress">
-                Question {questionCount + 1} / 12
+                Question {questionCount + 1} / 22
               </div>
             )}
             {isComplete && (
