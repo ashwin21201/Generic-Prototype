@@ -11,6 +11,7 @@ import 'reactflow/dist/style.css'
 import './ArchitectureDiagram.css'
 import GroupNode from './GroupNode'
 import ArchitectureNode from './ArchitectureNode'
+import { computeElkLayout } from './lib/elkLayout'
 
 /**
  * Map API graph (with backend-computed layout) to ReactFlow nodes/edges.
@@ -54,14 +55,22 @@ function mapToReactFlow(graphData) {
     }
   })
 
-  const edges = rawEdges.map((e) => ({
-    id: e.id,
-    source: e.from ?? e.from_node ?? e.source,
-    target: e.to ?? e.target,
-    type: 'smoothstep',
-    style: { stroke: '#000' },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#000' },
-  }))
+  const edges = rawEdges.map((e) => {
+    const edgeType = (e.type || 'traffic').toLowerCase()
+    const stroke = edgeType === 'data' ? '#16a34a' : edgeType === 'replication' ? '#7c3aed' : '#475569'
+    return {
+      id: e.id,
+      source: e.from ?? e.from_node ?? e.source,
+      target: e.to ?? e.target,
+      type: 'smoothstep',
+      className: `architecture-edge architecture-edge--${edgeType}`,
+      style: {
+        stroke,
+        strokeDasharray: edgeType === 'data' || edgeType === 'replication' ? '5 4' : undefined,
+      },
+      markerEnd: { type: MarkerType.ArrowClosed, color: stroke },
+    }
+  })
 
   return { nodes, edges }
 }
@@ -78,42 +87,38 @@ export default function ArchitectureDiagram() {
     const fetchArchitectureData = async () => {
       try {
         setLoading(true)
-        
-        // Try to fetch from API first (optimized flow)
+
+        // 1) Prefer rich diagram contract (containers/nodes/edges) + ELK layout
+        const diagramResp = await fetch(`/api/architecture/diagram?view=${encodeURIComponent(viewMode)}`)
+        if (diagramResp.ok) {
+          const diagram = await diagramResp.json()
+          const hasStruct = Array.isArray(diagram?.containers) && Array.isArray(diagram?.nodes) && Array.isArray(diagram?.edges)
+          if (hasStruct) {
+            const layout = await computeElkLayout(diagram)
+            const rf = mapViewStructToReactFlow(diagram, layout)
+            setNodes(rf.nodes)
+            setEdges(rf.edges)
+            setError(null)
+            if (diagram.architecture_id) setTitle(`Architecture: ${diagram.architecture_id}`)
+            return
+          }
+        }
+
+        // 2) Fallback to legacy graph-with-products (backend positions)
         const graphResponse = await fetch(`/api/architecture/graph-with-products?view=${encodeURIComponent(viewMode)}`)
-        
         if (graphResponse.ok) {
-          // API available - use optimized flow
           const graphData = await graphResponse.json()
-          console.groupCollapsed('[Diagram] Loaded graph-with-products')
-          console.log('nodes:', graphData?.nodes?.length, 'edges:', graphData?.edges?.length)
-          const sample = (graphData?.nodes || []).slice(0, 12).map((n) => ({
-            id: n.id,
-            type: n.type,
-            category: n.category,
-            parent_node: n.parent_node,
-            shape: n.shape,
-          }))
-          console.table(sample)
-          
-          // Fetch architecture ID
+          const { nodes: n, edges: e } = mapToReactFlow(graphData)
+          setNodes(n)
+          setEdges(e)
+          setError(null)
           try {
             const selectedResponse = await fetch('/api/architecture/selected')
             if (selectedResponse.ok) {
               const selected = await selectedResponse.json()
               setTitle(selected.architecture_id ? `Architecture: ${selected.architecture_id}` : 'Architecture Diagram')
             }
-          } catch (e) {
-            console.warn('Could not fetch architecture ID:', e)
-          }
-          
-          const { nodes: n, edges: e } = mapToReactFlow(graphData)
-          console.log('mapped nodes:', n.length, 'mapped edges:', e.length)
-          console.log('groups:', n.filter((x) => x.type === 'group').length, 'parented:', n.filter((x) => !!x.parentNode).length)
-          console.groupEnd()
-          setNodes(n)
-          setEdges(e)
-          setError(null)
+          } catch {}
         } else {
           // API not available or no data - fallback to sessionStorage
           const raw = sessionStorage.getItem('architectureResult')
@@ -234,4 +239,66 @@ export default function ArchitectureDiagram() {
       </div>
     </div>
   )
+}
+
+function mapViewStructToReactFlow(viewStruct, layout) {
+  const containers = viewStruct?.containers || []
+  const nodes = viewStruct?.nodes || []
+  const edges = viewStruct?.edges || []
+
+  const containersById = layout?.containersById || {}
+  const nodesById = layout?.nodesById || {}
+
+  const rfContainers = containers.map((c) => {
+    const pos = containersById[c.id] || { x: 0, y: 0, width: c.style?.width || 240, height: c.style?.height || 120 }
+    const parent = c.parent_id || undefined
+    const parentPos = parent ? containersById[parent] : null
+    const relX = parentPos ? pos.x - parentPos.x : pos.x
+    const relY = parentPos ? pos.y - parentPos.y : pos.y
+    return {
+      id: c.id,
+      type: 'group',
+      data: { label: c.label || c.id, ...c },
+      position: { x: relX, y: relY },
+      parentNode: parent,
+      extent: parent ? 'parent' : undefined,
+      style: { width: pos.width, height: pos.height },
+    }
+  })
+
+  const rfNodes = nodes.map((n) => {
+    const pos = nodesById[n.id] || { x: 0, y: 0, width: n.style?.width || 180, height: n.style?.height || 44 }
+    const parent = n.container_id || undefined
+    const parentPos = parent ? containersById[parent] : null
+    const relX = parentPos ? pos.x - parentPos.x : pos.x
+    const relY = parentPos ? pos.y - parentPos.y : pos.y
+    return {
+      id: n.id,
+      type: 'architecture',
+      data: { label: n.product_name || n.id, ...n },
+      position: { x: relX, y: relY },
+      parentNode: parent,
+      extent: parent ? 'parent' : undefined,
+      style: { width: pos.width, height: pos.height },
+    }
+  })
+
+  const rfEdges = edges.map((e) => {
+    const edgeType = (e.type || 'traffic').toLowerCase()
+    const stroke = edgeType === 'data' ? '#16a34a' : edgeType === 'replication' ? '#7c3aed' : '#475569'
+    return {
+      id: e.id || `e-${e.source}-${e.target}`,
+      source: e.source,
+      target: e.target,
+      type: 'smoothstep',
+      className: `architecture-edge architecture-edge--${edgeType}`,
+      style: {
+        stroke,
+        strokeDasharray: edgeType === 'data' || edgeType === 'replication' ? '5 4' : undefined,
+      },
+      markerEnd: { type: MarkerType.ArrowClosed, color: stroke },
+    }
+  })
+
+  return { nodes: [...rfContainers, ...rfNodes], edges: rfEdges }
 }

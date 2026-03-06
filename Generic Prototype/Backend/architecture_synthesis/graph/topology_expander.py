@@ -39,8 +39,14 @@ def expand_for_topology(graph: Dict[str, Any], *, max_instances_per_compute: int
     microservice_compute_ids = [
         n.get("id")
         for n in compute_nodes
-        if ((n.get("capability_ref") or "").lower() == "microservices_compute")
-        or (str(n.get("id") or "").lower().startswith("microservices_compute"))
+        if (
+            ((n.get("capability_ref") or "").lower() == "microservices_compute")
+            or (str(n.get("id") or "").lower().startswith("microservices_compute"))
+        )
+        # If compute was already expanded into named services (services_expander),
+        # do NOT override it with A/B/B.
+        and (not n.get("service_name"))
+        and ("__svc_" not in str(n.get("id") or ""))
     ]
     microservice_compute_ids = [i for i in microservice_compute_ids if i]
 

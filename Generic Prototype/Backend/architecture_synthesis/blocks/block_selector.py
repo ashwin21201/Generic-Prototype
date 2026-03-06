@@ -163,7 +163,11 @@ class BlockSelector:
         data_req = master_request.get("data_requirements", {})
         deployment_pref = master_request.get("deployment_preferences", {})
         non_func_req = master_request.get("non_functional_requirements", {})
+        func_req = master_request.get("functional_requirements", {})
         data_types_norm = [str(x).strip().lower() for x in (data_req.get("data_types", []) or [])]
+        services = func_req.get("services") or []
+        services_count = len(services) if isinstance(services, list) else (len([x for x in str(services).split(",") if x.strip()]) if services else 0)
+        arch_pattern = str(func_req.get("architecture_pattern") or master_request.get("architecture_pattern") or "").lower()
         
         for category in categories:
             caps = {}
@@ -190,6 +194,18 @@ class BlockSelector:
                     caps["stateless_compute"] = True
                 if deployment_pref.get("containerization_preferred"):
                     caps["container_support"] = True
+                # If intent indicates distributed/microservices, force container-based compute
+                if (
+                    services_count >= 2
+                    or any(k in arch_pattern for k in ["microservice", "distributed"])
+                    or any(k in str(func_req.get("application_type") or "").lower() for k in ["ecommerce", "bank", "fintech", "payment", "saas", "platform"])
+                ):
+                    caps["container_support"] = True
+                    caps["horizontal_scaling"] = True
+                    caps["stateless_compute"] = True
+                # If intent indicates serverless, force serverless
+                if any(k in arch_pattern for k in ["serverless", "faas", "lambda"]):
+                    caps["serverless"] = True
             
             # Data requirements
             if category == "data":

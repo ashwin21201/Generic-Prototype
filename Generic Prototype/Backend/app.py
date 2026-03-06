@@ -268,15 +268,57 @@ class IntentJsonRequest(BaseModel):
 # FastAPI App
 # ---------------------------------------------------------
 
+try:
+    from core.config import settings
+    API_V1_PREFIX = settings.API_V1_PREFIX
+    CORS_ORIGINS = getattr(settings, "cors_origins_list", ["*"])
+except Exception:
+    API_V1_PREFIX = "/api/v1"
+    CORS_ORIGINS = ["*"]
+
 app = FastAPI(title="Architecture Discovery Agent Backend")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount API v1 router (intent-schema, intent-builder, topologies, diagram, etc.)
+try:
+    from api.v1 import api_router
+    app.include_router(api_router, prefix=API_V1_PREFIX)
+except Exception as e:
+    logger.warning("API v1 router not mounted: %s", e)
+
+
+def _create_configurator_tables():
+    """Create configurator DB tables if they do not exist. Run at import and on startup."""
+    import os
+    from sqlalchemy import create_engine
+    from db.base import Base
+    import models  # noqa: F401 - register all model tables on Base.metadata
+    backend_dir = os.path.dirname(os.path.abspath(__file__))
+    sync_url = "sqlite:///" + os.path.join(backend_dir, "configurator.db")
+    try:
+        sync_engine = create_engine(sync_url)
+        Base.metadata.create_all(sync_engine)
+        sync_engine.dispose()
+        logger.info("Configurator DB tables ready at %s", sync_url)
+    except Exception as e:
+        logger.warning("Configurator DB init failed: %s", e)
+
+
+# Ensure tables exist at import (for TestClient which does not run lifespan) and on startup
+_create_configurator_tables()
+
+
+@app.on_event("startup")
+async def create_tables_startup():
+    """Ensure configurator DB tables exist when running under uvicorn."""
+    _create_configurator_tables()
 
 @app.get("/api/health")
 def health():
@@ -427,6 +469,8 @@ from architecture_synthesis.semantics import annotate_graph_semantics
 from architecture_synthesis.compliance import RuleEvaluationEngine
 from architecture_synthesis.resolution import ProductCatalogStore, ProductResolutionEngine
 from architecture_synthesis.graph.topology_expander import expand_for_topology
+from architecture_synthesis.graph.services_expander import expand_compute_to_services
+from services.architecture import diagram_generator as _diagram_gen
 
 
 @app.post("/api/synthesize")
@@ -468,7 +512,7 @@ def synthesize_architecture():
         if not policies:
             raise HTTPException(
                 status_code=400,
-                detail=f"No policy found for sector: {sector}. Supported sectors: BFSI, Fintech, Healthcare."
+                detail=f"No policy found for sector: {sector}. Supported sectors: BFSI, Fintech, Healthcare, E-commerce."
             )
         
         policy_merger = PolicyMerger()
@@ -549,6 +593,8 @@ def synthesize_architecture():
 
         annotate_graph_semantics(logical_graph)
         annotate_graph_semantics(topology_graph)
+        # Use intent.services to render multiple app services in topology view
+        expand_compute_to_services(topology_graph, intent=master_request, max_services=3, create_replicas=True)
         expand_for_topology(topology_graph, max_instances_per_compute=6)
 
         # Step 7b: Apply layout (normalize called inside)
@@ -690,6 +736,78 @@ def get_architecture_graph_with_products(view: str = "logical"):
         raise
     except Exception as e:
         logger.error(f"Error retrieving graph with products: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/architecture/diagram")
+def get_architecture_diagram(view: str = "logical", mode: str = "default"):
+    """
+    Legacy/chat diagram-ready JSON (rich contract):
+    - containers/nodes/edges + layout_hints per view
+    - also includes graph (for backward compatibility)
+    """
+    global latest_synthesized_architecture
+    try:
+        if latest_synthesized_architecture is None:
+            raise HTTPException(status_code=404, detail="No synthesized architecture available. Please run synthesis first.")
+        v = (view or "logical").strip().lower()
+        views = latest_synthesized_architecture.get("views") or {}
+        graph = None
+        if v in views and (views.get(v) or {}).get("graph") is not None:
+            graph = views[v]["graph"]
+        else:
+            graph = latest_synthesized_architecture.get("graph") or {}
+
+        # Enrich to match new contract (collapse/dedupe labels for logical, keep topology edges)
+        g = copy.deepcopy(graph)
+        try:
+            # Ensure semantic fields exist
+            annotate_graph_semantics(g)
+        except Exception:
+            pass
+
+        # Note: topology view is already expanded during /api/synthesize (views.topology).
+        # Keep this endpoint idempotent and avoid re-expanding the compute tier here.
+
+        if v == "logical":
+            try:
+                g = _diagram_gen._collapse_to_primary(g)
+            except Exception:
+                pass
+            try:
+                g = _diagram_gen._dedupe_edges(g, by_capability=True)
+            except Exception:
+                pass
+            try:
+                apply_layout(g, layout_strategy="layered_vertical", orientation="horizontal")
+                g["layout_direction"] = "RIGHT"
+            except Exception:
+                pass
+        else:
+            # topology: keep expansion already present (from synthesize) but dedupe exact duplicates
+            try:
+                g = _diagram_gen._dedupe_edges(g, by_capability=False)
+            except Exception:
+                pass
+            try:
+                apply_layout(g, layout_strategy="layered_vertical", orientation="vertical")
+                g["layout_direction"] = "DOWN"
+            except Exception:
+                pass
+
+        view_struct = _diagram_gen._graph_to_view_struct(g)
+        return {
+            "architecture_id": latest_synthesized_architecture.get("architecture_id"),
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "view": v,
+            "mode": mode or "default",
+            "graph": g,
+            **view_struct,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error retrieving legacy diagram: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/architecture/compliance")

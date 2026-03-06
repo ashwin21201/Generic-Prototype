@@ -211,9 +211,56 @@ class GraphComposer:
         has_public_access: bool,
         deployment_topology: DeploymentTopology
     ) -> List[Edge]:
-        """Create edges based on layering and interfaces"""
+        """
+        Create edges based on:
+        1) Dependency declarations (`BlockDefinition.requires`) when present
+        2) Fallback standard layer wiring (client → waf → api → compute → data/cache/messaging)
+        """
         edges = []
         edge_counter = 0
+
+        # ---- 1) Dependency-based edges (docs: dependency_declarations first) ----
+        # Map block_id -> node ids (may have multiple instances per block)
+        node_ids_by_block: Dict[str, List[str]] = {}
+        for n in nodes:
+            bid = (n.capability_ref or n.id or "").strip()
+            if not bid:
+                continue
+            node_ids_by_block.setdefault(bid, []).append(n.id)
+
+        # Use requires list to create edges requirement -> block node (best effort)
+        for block in blocks:
+            if not getattr(block, "requires", None):
+                continue
+            dst_ids = node_ids_by_block.get(block.block_id) or []
+            if not dst_ids:
+                continue
+            for req in block.requires:
+                req = (req or "").strip()
+                if not req:
+                    continue
+                src_ids = node_ids_by_block.get(req) or []
+                # Category-layer requirements (e.g. network_layer)
+                if not src_ids and req.lower().endswith("_layer"):
+                    cat = req.lower().replace("_layer", "")
+                    # pick any node in that category
+                    for n in nodes:
+                        if (n.category or "").lower() == cat:
+                            src_ids.append(n.id)
+                    src_ids = list(dict.fromkeys(src_ids))
+                if not src_ids:
+                    continue
+                # Wire all sources to all destinations (kept small by registry + instance counts)
+                for s in src_ids:
+                    for d in dst_ids:
+                        edges.append(Edge(
+                            id=f"e{edge_counter}",
+                            from_node=s,
+                            to=d,
+                            protocol="dependency",
+                            type="dependency",
+                        ))
+                        edge_counter += 1
         
         # Build node lookup
         nodes_by_category = {}

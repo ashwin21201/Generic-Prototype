@@ -63,3 +63,12 @@ def evaluate_sizing_formulas(
                 list(variables.keys()),
             )
     return result
+
+
+def evaluate_expression(expression: str, variables: Dict[str, Any]) -> Any:
+    """Evaluate a single formula expression with the given variables. For validate-formula API."""
+    if not expression or not expression.strip():
+        raise ValueError("Empty expression")
+    ev = _make_evaluator()
+    ev.names = dict(variables)
+    return ev.eval(expression.strip())
