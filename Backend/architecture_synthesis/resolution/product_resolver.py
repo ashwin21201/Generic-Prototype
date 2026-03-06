@@ -6,6 +6,7 @@ from .product_schemas import (
 from .product_catalog import ProductCatalogStore
 from ..graph.graph_schemas import GraphTopologyJSON
 from ..blocks.block_registry import BlockRegistryStore
+from ..graph.simple_layout import apply_simple_layout
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +102,11 @@ class ProductResolutionEngine:
         # Update graph with resolved nodes
         graph_dict["nodes"] = resolved_nodes
         
-        logger.info(f"Resolved {len(resolved_nodes)} nodes with products")
+        # Apply layout to position nodes
+        logger.info("Applying layout to graph...")
+        graph_dict = apply_simple_layout(graph_dict)
+        
+        logger.info(f"Resolved {len(resolved_nodes)} nodes with products and applied layout")
         
         return ResolvedArchitectureJSON(
             architecture_id=architecture_id,

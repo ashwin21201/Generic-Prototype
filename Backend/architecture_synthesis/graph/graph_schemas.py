@@ -31,6 +31,7 @@ class Node(BaseModel):
     capability_ref: Optional[str] = None
     data: NodeData
     config: Optional[NodeConfig] = None
+    parent_node: Optional[str] = None  # Parent container (VPC/subnet)
 
 
 class Edge(BaseModel):

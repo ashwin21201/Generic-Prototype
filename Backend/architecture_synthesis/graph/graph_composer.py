@@ -32,6 +32,20 @@ class GraphComposer:
         edges = []
         node_counter = {}
         
+        # Create VPC container (if multi-region or multi-AZ deployment)
+        vpc_id = "vpc-main"
+        if deployment_topology.multi_az or len(deployment_topology.regions) > 1:
+            nodes.append(Node(
+                id=vpc_id,
+                type="group",
+                category="network",
+                data=NodeData(
+                    label=f"VPC ({deployment_topology.regions[0]})",
+                    description="Virtual Private Cloud"
+                )
+            ))
+            logger.info("Created VPC container")
+        
         # Create external client node if public access
         has_public_access = any(b.category == "security" for b in blocks)
         if has_public_access:
@@ -43,6 +57,8 @@ class GraphComposer:
             ))
         
         # Create nodes from blocks
+        subnet_assignments = {"public": [], "private": []}
+        
         for block in blocks:
             category = block.category
             node_counter[category] = node_counter.get(category, 0) + 1
@@ -59,6 +75,9 @@ class GraphComposer:
                 if num_instances > 1 and block.category == "data":
                     role = "primary" if i == 0 else "replica"
                 
+                # Determine subnet placement (public vs private)
+                subnet_type = self._determine_subnet_type(block)
+                
                 node = Node(
                     id=node_id,
                     type=block.category,
@@ -73,6 +92,44 @@ class GraphComposer:
                 )
                 
                 nodes.append(node)
+                subnet_assignments[subnet_type].append(node_id)
+        
+        # Create subnet containers if VPC exists
+        if deployment_topology.multi_az or len(deployment_topology.regions) > 1:
+            # Public subnet
+            if subnet_assignments["public"]:
+                nodes.insert(1, Node(  # Insert after VPC
+                    id="subnet-public",
+                    type="group",
+                    category="network",
+                    parent_node=vpc_id,
+                    data=NodeData(
+                        label="Public Subnet",
+                        description="Internet-facing resources"
+                    )
+                ))
+                logger.info(f"Created public subnet with {len(subnet_assignments['public'])} nodes")
+            
+            # Private subnet
+            if subnet_assignments["private"]:
+                nodes.insert(2 if subnet_assignments["public"] else 1, Node(
+                    id="subnet-private",
+                    type="group",
+                    category="network",
+                    parent_node=vpc_id,
+                    data=NodeData(
+                        label="Private Subnet",
+                        description="Internal resources"
+                    )
+                ))
+                logger.info(f"Created private subnet with {len(subnet_assignments['private'])} nodes")
+            
+            # Assign nodes to their subnets
+            for node in nodes:
+                if node.id in subnet_assignments["public"]:
+                    node.parent_node = "subnet-public"
+                elif node.id in subnet_assignments["private"]:
+                    node.parent_node = "subnet-private"
         
         # Create edges based on block interfaces and layering
         edges = self._create_edges(nodes, blocks, has_public_access, deployment_topology)
@@ -101,6 +158,21 @@ class GraphComposer:
         
         # Other blocks: typically 1 instance
         return 1
+    
+    def _determine_subnet_type(self, block: BlockDefinition) -> str:
+        """Determine if a block should be in public or private subnet"""
+        # Public subnet: edge/security components that need internet access
+        public_categories = ["security", "network"]
+        public_block_ids = ["waf_layer", "api_gateway", "load_balancer"]
+        
+        if block.category in public_categories:
+            return "public"
+        
+        if block.block_id in public_block_ids:
+            return "public"
+        
+        # Private subnet: everything else (compute, data, cache, storage)
+        return "private"
     
     def _generate_label(
         self,
@@ -183,7 +255,7 @@ class GraphComposer:
             # Client → WAF
             waf_nodes = nodes_by_category.get("security", [])
             for waf in waf_nodes:
-                if "waf" in waf.capability_ref:
+                if waf.capability_ref and "waf" in waf.capability_ref:
                     edges.append(Edge(
                         id=f"e{edge_counter}",
                         from_node="client",
@@ -196,7 +268,7 @@ class GraphComposer:
                     # WAF → API Gateway
                     api_gw_nodes = nodes_by_category.get("network", [])
                     for api_gw in api_gw_nodes:
-                        if "api" in api_gw.capability_ref:
+                        if api_gw.capability_ref and "api" in api_gw.capability_ref:
                             edges.append(Edge(
                                 id=f"e{edge_counter}",
                                 from_node=waf.id,

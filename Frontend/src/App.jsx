@@ -64,43 +64,67 @@ function App() {
       // Remove markdown code blocks if present
       if (cleanContent.startsWith('```json')) {
         cleanContent = cleanContent.replace(/```json\n?/g, '').replace(/```/g, '').trim()
+        console.log('🔧 Removed ```json markdown wrapper')
       } else if (cleanContent.startsWith('```')) {
         cleanContent = cleanContent.replace(/```\n?/g, '').trim()
+        console.log('🔧 Removed ``` markdown wrapper')
       }
       
+      // Try to parse as JSON
       try {
         const parsed = JSON.parse(cleanContent)
+        console.log('✅ Successfully parsed response as JSON')
+        console.log('📋 JSON structure:', Object.keys(parsed))
+        
         // Check if it has the expected structure (request_metadata indicates it's the final JSON)
         if (parsed.request_metadata || parsed.functional_requirements) {
           isJsonResponse = true
+          console.log('✅ Detected as Architecture Intent JSON (has request_metadata or functional_requirements)')
+        } else {
+          console.log('⚠️ JSON parsed but missing expected structure')
         }
-      } catch {
+      } catch (e) {
         // Not JSON, it's a regular question
+        console.log('ℹ️ Response is not JSON (regular question/answer)')
       }
 
       if (isJsonResponse) {
         // JSON detected - don't show in chat
+        console.log('🎯 Architecture Intent JSON detected!')
+        console.log('📤 Auto-saving to backend...')
         setIsComplete(true)
+        
         // Auto-save intent to backend so "Generate Architecture" works without clicking "View JSON"
         try {
-          await fetch('/api/intent-json', {
+          const saveResponse = await fetch('/api/intent-json', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content: assistantMessage.content })
           })
+          
+          if (saveResponse.ok) {
+            console.log('✅ Intent JSON auto-saved to backend successfully')
+          } else {
+            console.warn('⚠️ Failed to auto-save intent to backend:', saveResponse.status)
+          }
         } catch (e) {
-          console.warn('Failed to auto-save intent to backend', e)
+          console.error('❌ Failed to auto-save intent to backend', e)
         }
+        
         // Show success message in chat with view button
         setMessages((prev) => [
           ...prev,
           {
             role: 'assistant',
-            content: `✅ Complete! Your Architecture Intent has been generated successfully.\n\nClick below to view the JSON or generate the architecture.`,
+            content: `✅ **Architecture Intent Generation Complete!**\n\n✨ Your cloud architecture requirements have been successfully captured.\n\n👇 **Next Steps:**\n• Click "View JSON" to inspect the generated requirements\n• Click "Generate Architecture" to synthesize the full architecture diagram\n\n⏱️ Synthesis typically takes 5-10 seconds.`,
             isSuccess: true,
             jsonContent: assistantMessage.content
           }
         ])
+        
+        // Log for debugging
+        console.log('✅ Intent JSON generation complete - buttons should be visible')
+        console.log('✅ Message added with isSuccess=true and jsonContent present')
       } else {
         // Regular question - add to chat
         setMessages((prev) => [...prev, assistantMessage])

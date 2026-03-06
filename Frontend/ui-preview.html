@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UI Improvements Preview</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #0a0e1a 0%, #1a1f3a 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            color: #e2e8f0;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: #10b981;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .success-message {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(5, 150, 105, 0.1));
+            border: 2px solid #10b981;
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+            animation: successPulse 2s ease-in-out infinite;
+            margin-bottom: 30px;
+        }
+        
+        @keyframes successPulse {
+            0%, 100% { box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2); }
+            50% { box-shadow: 0 4px 20px rgba(16, 185, 129, 0.4); }
+        }
+        
+        .message-content {
+            color: #e2e8f0;
+            line-height: 1.7;
+            margin-bottom: 0.5rem;
+            font-size: 1rem;
+        }
+        
+        .message-content strong {
+            color: #34d399;
+            font-weight: 700;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1.25rem;
+            flex-wrap: wrap;
+            padding: 1rem;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 10px;
+            border: 1px solid rgba(100, 116, 139, 0.3);
+        }
+        
+        button {
+            padding: 0.875rem 1.5rem;
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+        
+        .view-json-btn {
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+        }
+        
+        .view-json-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(59, 130, 246, 0.5);
+        }
+        
+        .synthesize-btn {
+            background: linear-gradient(135deg, #10b981, #059669);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .synthesize-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            animation: shimmer 3s infinite;
+        }
+        
+        @keyframes shimmer {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+        
+        .synthesize-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(16, 185, 129, 0.5);
+        }
+        
+        .info-box {
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid #334155;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-top: 30px;
+        }
+        
+        .info-box h3 {
+            color: #10b981;
+            margin-top: 0;
+        }
+        
+        .info-box ul {
+            line-height: 1.8;
+        }
+        
+        .info-box code {
+            background: rgba(15, 23, 42, 0.8);
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: #34d399;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 UI Improvements Preview</h1>
+        
+        <div class="success-message">
+            <div class="message-content">
+                <strong>✅ Architecture Intent Generation Complete!</strong><br><br>
+                ✨ Your cloud architecture requirements have been successfully captured.<br><br>
+                <strong>👇 Next Steps:</strong><br>
+                • Click "View JSON" to inspect the generated requirements<br>
+                • Click "Generate Architecture" to synthesize the full architecture diagram<br><br>
+                ⏱️ Synthesis typically takes 5-10 seconds.
+            </div>
+            <div class="action-buttons">
+                <button class="view-json-btn" onclick="alert('This would open the JSON in a new tab')">
+                    📄 View JSON
+                </button>
+                <button class="synthesize-btn" onclick="alert('This would generate and open the architecture diagram')">
+                    🏗️ Generate Architecture
+                </button>
+            </div>
+        </div>
+        
+        <div class="info-box">
+            <h3>✨ What's New?</h3>
+            <ul>
+                <li><strong>Pulsing Green Border</strong> - The success message now has an animated glow to draw attention</li>
+                <li><strong>Clearer Instructions</strong> - Step-by-step guidance with emojis for visual scanning</li>
+                <li><strong>Enhanced Buttons</strong> - Larger, more colorful buttons with hover effects</li>
+                <li><strong>Shimmer Effect</strong> - The "Generate Architecture" button has a subtle shimmer animation</li>
+                <li><strong>Better Grouping</strong> - Buttons are contained in a visible box for clear separation</li>
+                <li><strong>Console Logging</strong> - Comprehensive logging for easy debugging (press F12)</li>
+            </ul>
+        </div>
+        
+        <div class="info-box">
+            <h3>🚀 How to Test in Real App</h3>
+            <ol>
+                <li>Open <code>http://localhost:5173</code> in your browser</li>
+                <li>Press <code>Ctrl+Shift+R</code> to hard refresh (clear cache)</li>
+                <li>Start a new conversation (click "Clear All" if needed)</li>
+                <li>Complete the questionnaire (~5-12 questions)</li>
+                <li>Watch for the success message with these new styles!</li>
+                <li>Open browser console (F12) to see detailed logging</li>
+            </ol>
+        </div>
+        
+        <div class="info-box">
+            <h3>🐛 If Buttons Still Don't Appear</h3>
+            <p>Open browser console (F12) and check for these logs:</p>
+            <ul>
+                <li>✅ "Successfully parsed response as JSON"</li>
+                <li>✅ "Detected as Architecture Intent JSON"</li>
+                <li>✅ "Intent JSON generation complete - buttons should be visible"</li>
+            </ul>
+            <p>If you don't see these logs, the JSON detection might be failing. Check the console for error messages.</p>
+        </div>
+    </div>
+</body>
+</html>

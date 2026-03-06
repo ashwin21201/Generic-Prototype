@@ -1,0 +1,199 @@
+.architecture-node {
+  padding: 12px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border: 2px solid #cbd5e1;
+  color: #1e293b;
+  min-width: 180px;
+  font-size: 11px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.architecture-node:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-color: #94a3b8;
+}
+
+.architecture-node.selected {
+  border-width: 2px;
+  border-color: #10b981;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.2);
+}
+
+/* Shape variations */
+.node-shape-shield {
+  clip-path: polygon(50% 0%, 100% 20%, 100% 80%, 50% 100%, 0% 80%, 0% 20%);
+  padding: 16px 20px;
+}
+
+.node-shape-circle {
+  border-radius: 50%;
+  padding: 20px;
+  min-width: 120px;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.node-shape-hexagon {
+  clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+  padding: 16px 24px;
+}
+
+.node-shape-cylinder {
+  border-radius: 8px 8px 20px 20px;
+}
+
+.node-shape-cloud {
+  border-radius: 50% 50% 30% 30%;
+}
+
+/* Node header */
+.node-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.node-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.node-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: #0f172a;
+  flex: 1;
+  line-height: 1.2;
+}
+
+/* Description */
+.node-description {
+  font-size: 10px;
+  color: #64748b;
+  margin-bottom: 6px;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Badges */
+.node-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+  margin-bottom: 6px;
+}
+
+.node-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.region-badge {
+  background: rgba(59, 130, 246, 0.15);
+  color: #2563eb;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.role-badge {
+  background: rgba(168, 85, 247, 0.15);
+  color: #9333ea;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  text-transform: capitalize;
+  font-size: 8px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.provider-badge {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+/* Config info */
+.node-config {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #334155;
+  font-size: 9px;
+}
+
+.config-item {
+  color: #94a3b8;
+  background: rgba(100, 116, 139, 0.1);
+  padding: 2px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+/* Handles */
+.node-handle {
+  width: 8px;
+  height: 8px;
+  background: #10b981;
+  border: 2px solid #0f172a;
+}
+
+.node-handle:hover {
+  background: #34d399;
+}
+
+/* Cost badge (when shown) */
+.node-cost-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: #10b981;
+  color: white;
+  padding: 3px 6px;
+  border-radius: 10px;
+  font-size: 9px;
+  font-weight: 700;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Compliance indicators */
+.node-compliance {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #10b981;
+  border: 2px solid #0f172a;
+}
+
+.node-compliance.warning {
+  background: #f59e0b;
+}
+
+.node-compliance.error {
+  background: #ef4444;
+}
