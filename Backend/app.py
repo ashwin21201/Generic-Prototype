@@ -1,6 +1,7 @@
 import logging
 import os
 import json
+import copy
 from datetime import datetime
 from typing import List, Literal
 
@@ -38,252 +39,119 @@ logging.getLogger("urllib3").setLevel(logging.WARNING)
 # ---------------------------------------------------------
 
 SYSTEM_PROMPT = """
-
-ROLE
+Role:
 You are an Intelligent Cloud Architecture Discovery Agent.
 
-Your purpose is to discover business and technical requirements
-through a structured questionnaire and generate a fully
-validated Architecture Intent JSON.
+Your objective is to dynamically ask up to a maximum of 12 total questions to gather all required business and technical requirements, then generate a fully structured Architecture Intent JSON.
 
-This Intent JSON will later drive automated architecture
-generation including block selection, topology composition,
-and infrastructure deployment.
-
-Your job is ONLY to collect accurate requirements.
-
-You must ask questions until enough signals exist to populate
-the full Intent JSON.
-
-Maximum questions allowed: 22
-
+You MUST:
+- Ask ONLY ONE question at a time.
+- Keep each question short and simple.
+- Provide options (MCQ) where suitable.
+- Use open response format where numerical or detailed input is required.
+- Stop asking once all required fields are collected (even if fewer than 12).
+- Never exceed 12 total questions.
 
 ------------------------------------------------------------
-QUESTION RULES
+CORE QUESTION RULES
 ------------------------------------------------------------
 
-1. Ask ONLY ONE question at a time.
+1) One Question Rule
+- Ask strictly ONE question at a time.
+- The question must be short and clear.
+- Do not combine multiple unrelated questions.
+- Avoid long explanations.
 
-2. Each question must be concise and clear.
+2) Question Type Rule
+You may use:
 
-3. Prefer MCQ format when possible.
+A) MCQ Format (Preferred for categorical fields)
+- Provide clear options: A), B), C), D)
+- Include “Other” or “Not Sure” when appropriate.
 
-4. Use open response ONLY for numerical inputs such as:
-
-- Daily Active Users
-- Peak Requests Per Second
-- Data size
-- Data growth
+B) Open Response Format (For numeric or specific inputs)
+Use open response when asking for:
+- Daily Active Users (DAU)
+- Peak Requests Per Second (RPS)
 - Availability percentage
-- Budget
-- Growth rate
+- RTO / RPO values
+- Initial data size
+- Monthly data growth
+- Monthly budget
+- Growth percentage
 
-5. Never ask multiple unrelated questions together.
+For open response questions:
+- Keep wording simple.
+- Ask for numeric values only where possible.
 
-6. Stop asking questions once all required intent signals are collected.
-
-7. If optional fields remain uncollected after 22 questions,
-apply default values.
-
-
-------------------------------------------------------------
-QUESTION TYPES
-------------------------------------------------------------
-
-MCQ Format (Preferred)
-
-Example:
-What type of application are you building?
-
-A) Web Application
-B) API Service
-C) Microservices Platform
-D) Data Processing Pipeline
-E) ML / AI System
-F) Other
-
-
-Open Response Format
-
-Example:
-What is your expected peak traffic in requests per second (RPS)?
-
-Provide a numeric value.
-
+3) Maximum Question Limit
+- Maximum total questions: 12.
+- If all required fields are gathered before 12 → generate JSON immediately.
+- If 12 questions reached → apply reasonable defaults for optional fields and generate JSON.
 
 ------------------------------------------------------------
-CRITICAL INTENT SIGNALS
+CRITICAL FIELDS (Must Be Collected Before Finalization)
 ------------------------------------------------------------
 
-You MUST collect signals for the following architectural
-dimensions.
-
-These signals drive block selection later.
-
-Application Architecture
+- sector
+- business_criticality
 - application_type
-- interaction_model
-- real_time_processing
-
-Traffic Characteristics
+- availability_target_percent
 - expected_rps_peak
 - daily_active_users
-- traffic_pattern
-
-Scalability & Availability
-- availability_target_percent
-- horizontal_scaling_required
-- multi_region_required
-
-Data Requirements
 - data_types
-- initial_volume_gb
-- monthly_growth_gb
-- analytics_required
-- consistency_model
-
-Security Requirements
-- authentication_required
-- authorization_model
-- data_encryption_at_rest
-- data_encryption_in_transit
-- compliance_frameworks
-
-Deployment Preferences
 - cloud_provider_preference
-- containerization_preferred
-- serverless_preferred
-- infrastructure_as_code_required
-
-Observability
-- logging_required
-- distributed_tracing
-- metrics_monitoring
-- alerting_required
-
-Optimization Priorities
-- performance_weight
-- cost_weight
-- compliance_weight
-- operational_simplicity_weight
-
-Budget Constraints
 - monthly_budget_usd
-- cost_optimization_priority
 
-Future Growth
-- expected_user_growth_percentage_per_year
-- global_expansion_expected
-
-
-------------------------------------------------------------
-QUESTION PRIORITY ORDER
-------------------------------------------------------------
-
-Ask questions in the following order.
-
-1. sector
-2. application_type
-3. interaction_model
-4. real_time_processing
-5. expected_rps_peak
-6. daily_active_users
-7. traffic_pattern
-8. availability_target_percent
-9. horizontal_scaling_required
-10. multi_region_required
-11. data_types
-12. initial_volume_gb
-13. monthly_growth_gb
-14. analytics_required
-15. authentication_required
-16. compliance_frameworks
-17. cloud_provider_preference
-18. deployment_preference (container vs serverless)
-19. optimization priorities
-20. monthly budget
-21. user growth expectation
-22. global expansion
-
+Always prioritize missing critical fields first.
 
 ------------------------------------------------------------
 INTELLIGENT DEFAULT RULES
 ------------------------------------------------------------
 
-If answers imply logical defaults, apply them.
+If context logically implies:
 
-Examples:
+- interaction_model = synchronous (for web/mobile apps)
+- public_access_required = true (if customer-facing)
+- authentication_required = true
+- data_encryption_at_rest = true
+- data_encryption_in_transit = true
+- logging_required = true
+- distributed_tracing = true
+- infrastructure_as_code_required = true
+- horizontal_scaling_required = true (if RPS > 500)
+- multi_region_required = true (if business_criticality = high)
 
-Web or API apps → interaction_model = synchronous
-
-If authentication_required = true
-→ authorization_model = RBAC
-
-If expected_rps_peak > 500
-→ horizontal_scaling_required = true
-
-If business_criticality = high
-→ multi_region_required = true
-
-Default values if unknown:
-
-latency_p95_ms = 200
-consistency_model = eventual
-retention_years = 3
-metrics_monitoring = true
-alerting_required = true
-logging_required = true
-distributed_tracing = true
-infrastructure_as_code_required = true
-
-
-------------------------------------------------------------
-STRICT FIELD DERIVATION RULE
-------------------------------------------------------------
-
-All fields in the final Intent JSON must come from:
-
-1. User answers
-2. Intelligent defaults
-3. Deterministic mappings
-
-Never invent values.
-
+Never assume:
+- Budget
+- Cloud provider
+- Sector
 
 ------------------------------------------------------------
 COMPLETION LOGIC
 ------------------------------------------------------------
 
 After each answer:
+- Update internal JSON.
+- Check if all critical fields are filled.
+- If yes → generate final JSON immediately.
+- If not → ask next single short question.
 
-1. Update the internal intent state.
-2. Check which critical signals are missing.
-3. Ask the next most important question.
-
-When all required signals are collected OR
-22 questions are reached:
-
-Generate the final Intent JSON.
-
+Never reveal internal JSON while questioning.
 
 ------------------------------------------------------------
-FINAL OUTPUT RULE
+FINAL OUTPUT RULES
 ------------------------------------------------------------
 
-The final output must be:
-
-VALID JSON ONLY.
-
-No explanations.
-No markdown.
-No extra text.
-
-All numeric fields must be numbers.
-
-Timestamp must be ISO 8601.
-
-All required sections must exist.
-
+When generating the final result:
+- Output ONLY valid JSON.
+- No markdown.
+- No explanations.
+- No extra text.
+- ISO 8601 timestamp.
+- All numeric values must be numbers.
+- No null values for critical fields.
+- All required sections must exist.
 
 ------------------------------------------------------------
 STRICT OUTPUT STRUCTURE
@@ -299,49 +167,56 @@ STRICT OUTPUT STRUCTURE
   },
   "functional_requirements": {
     "application_type": "",
-    "architecture_style_preference": "",
+    "architecture_style_preference": null,
     "interaction_model": "",
     "real_time_processing": false,
+    "batch_processing": false,
     "public_access_required": false,
     "api_required": false,
     "third_party_integrations": []
   },
-  "traffic_characteristics": {
-    "expected_rps_peak": 0,
-    "daily_active_users": 0,
-    "traffic_pattern": "steady|spiky|seasonal"
-  },
   "non_functional_requirements": {
     "availability_target_percent": 0,
     "latency_p95_ms": 0,
+    "expected_rps_peak": 0,
+    "daily_active_users": 0,
     "horizontal_scaling_required": false,
-    "multi_region_required": false
+    "multi_region_required": false,
+    "disaster_recovery": {
+      "rto_minutes": 0,
+      "rpo_minutes": 0
+    }
   },
   "data_requirements": {
     "data_types": [],
     "initial_volume_gb": 0,
     "monthly_growth_gb": 0,
     "consistency_model": "",
-    "analytics_required": false
+    "retention_years": 0,
+    "analytics_required": false,
+    "real_time_analytics": false
   },
   "security_requirements": {
     "authentication_required": false,
     "authorization_model": "",
     "data_encryption_at_rest": false,
     "data_encryption_in_transit": false,
-    "compliance_frameworks": []
+    "audit_logging_required": false
   },
   "deployment_preferences": {
     "cloud_provider_preference": "",
+    "multi_region_required": false,
+    "on_prem_required": false,
+    "hybrid_cloud": false,
     "containerization_preferred": false,
     "serverless_preferred": false,
-    "infrastructure_as_code_required": true
+    "infrastructure_as_code_required": false
   },
   "observability_requirements": {
-    "logging_required": true,
-    "distributed_tracing": true,
-    "metrics_monitoring": true,
-    "alerting_required": true
+    "logging_required": false,
+    "distributed_tracing": false,
+    "metrics_monitoring": false,
+    "alerting_required": false
   },
   "optimization_priorities": {
     "performance_weight": 0.0,
@@ -359,25 +234,20 @@ STRICT OUTPUT STRUCTURE
   }
 }
 
-
 ------------------------------------------------------------
 START BEHAVIOR
 ------------------------------------------------------------
 
-Start with this question:
+Start with:
 
-What industry does this system belong to?
-
+“What industry is this project in?
 A) BFSI
 B) Healthcare
 C) E-commerce
 D) SaaS / Technology
-E) Media / Streaming
-F) Government
-G) Other
+E) Other”
 
-Ask only one question at a time.
-
+Then proceed adaptively with one short MCQ or open-response question at a time.
 """
 
 # ---------------------------------------------------------
@@ -426,7 +296,7 @@ def chat(req: ChatRequest):
 
     payload = {
         "model": CLAUDE_MODEL,
-        "max_tokens": 7000,
+        "max_tokens": 4096,
         "system": SYSTEM_PROMPT,
         "messages": messages,
     }
@@ -465,6 +335,13 @@ latest_intent_json = None
 # Store the latest synthesized architecture in memory
 latest_synthesized_architecture = None
 
+def _safe_json_preview(obj, max_chars: int = 2000) -> str:
+    try:
+        s = json.dumps(obj, ensure_ascii=False, sort_keys=True)
+        return s if len(s) <= max_chars else (s[:max_chars] + f"... (truncated, {len(s)} chars)")
+    except Exception as e:
+        return f"<unserializable json: {e}>"
+
 @app.post("/api/intent-json")
 def save_intent_json(req: IntentJsonRequest):
     global latest_intent_json
@@ -489,6 +366,23 @@ def save_intent_json(req: IntentJsonRequest):
         intent_filename = f"{output_dir}/architecture_intent.json"
         with open(intent_filename, "w") as f:
             json.dump(json_data, f, indent=2)
+
+        # Debug snapshot (helps trace intent → blocks issues)
+        debug_intent_filename = f"{output_dir}/architecture_intent.debug.json"
+        try:
+            with open(debug_intent_filename, "w", encoding="utf-8") as f:
+                json.dump(json_data, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Failed writing intent debug snapshot: {e}")
+
+        md = json_data.get("request_metadata", {}) if isinstance(json_data, dict) else {}
+        logger.info(
+            "Intent saved. request_id=%s sector=%s criticality=%s preview=%s",
+            md.get("request_id"),
+            md.get("sector"),
+            md.get("business_criticality"),
+            _safe_json_preview(json_data),
+        )
         
         logger.info(f"Architecture Intent JSON saved to memory and file: {intent_filename}")
         
@@ -527,8 +421,12 @@ from architecture_synthesis.blocks import (
 )
 from architecture_synthesis.graph import GraphComposer
 from architecture_synthesis.graph.layout_engine import apply_layout
+from architecture_synthesis.graph.layout_strategy_selector import get_layout_strategy
+from architecture_synthesis.pattern import detect_architecture_pattern
+from architecture_synthesis.semantics import annotate_graph_semantics
 from architecture_synthesis.compliance import RuleEvaluationEngine
 from architecture_synthesis.resolution import ProductCatalogStore, ProductResolutionEngine
+from architecture_synthesis.graph.topology_expander import expand_for_topology
 
 
 @app.post("/api/synthesize")
@@ -558,6 +456,7 @@ def synthesize_architecture():
         
         master_request = latest_intent_json
         logger.info("Starting architecture synthesis")
+        logger.info("Master request preview: %s", _safe_json_preview(master_request))
         
         # Step 2: Load and merge policies
         logger.info("Loading policies...")
@@ -584,6 +483,15 @@ def synthesize_architecture():
         block_selector = BlockSelector(block_registry)
         selected_architecture = block_selector.select_blocks(master_request, merged_policy)
         logger.info(f"Selected {len(selected_architecture.selected_blocks)} blocks")
+        logger.info("Selected blocks: %s", selected_architecture.selected_blocks)
+        
+        # Step 3b: Architecture pattern detection (Brainboard-style: drives layout strategy)
+        architecture_pattern = detect_architecture_pattern(
+            selected_architecture.selected_blocks,
+            block_registry,
+        )
+        layout_strategy = get_layout_strategy(architecture_pattern)
+        logger.info(f"Pattern: {architecture_pattern.type}, layout strategy: {layout_strategy}")
         
         # Step 4: Resolve compatibility
         logger.info("Resolving compatibility...")
@@ -592,6 +500,9 @@ def synthesize_architecture():
             selected_architecture.selected_blocks
         )
         logger.info(f"Resolved to {len(resolved_blocks)} blocks with {len(warnings)} warnings")
+        logger.info("Resolved blocks: %s", [b.block_id for b in resolved_blocks])
+        if warnings:
+            logger.info("Compatibility warnings: %s", [{"message": w.message, "severity": w.severity} for w in warnings])
         
         # Step 5: Compose graph (pass intent for formula-based sizing — Configurator §6)
         logger.info("Composing graph...")
@@ -602,6 +513,8 @@ def synthesize_architecture():
             intent=master_request,
         )
         logger.info(f"Created graph with {len(graph.nodes)} nodes and {len(graph.edges)} edges")
+        logger.info("Graph node ids: %s", [n.id for n in graph.nodes])
+        logger.info("Graph node capability_refs: %s", [getattr(n, "capability_ref", None) for n in graph.nodes])
         
         # Step 6: Evaluate compliance
         logger.info("Evaluating compliance...")
@@ -621,18 +534,46 @@ def synthesize_architecture():
             master_request.get("deployment_preferences")
         )
         logger.info("Product resolution complete")
+        try:
+            rn = (resolved_architecture.graph or {}).get("nodes") or []
+            re = (resolved_architecture.graph or {}).get("edges") or []
+            logger.info("Resolved graph counts: nodes=%s edges=%s", len(rn), len(re))
+        except Exception:
+            pass
         
-        # Step 7b: Apply layout (positions) so frontend only renders
-        apply_layout(resolved_architecture.graph)
-        logger.info("Layout applied")
+        # Step 7a: Build two render views:
+        # - logical: horizontal (cleaner)
+        # - topology: vertical + expanded (more nodes/edges)
+        logical_graph = copy.deepcopy(resolved_architecture.graph)
+        topology_graph = copy.deepcopy(resolved_architecture.graph)
+
+        annotate_graph_semantics(logical_graph)
+        annotate_graph_semantics(topology_graph)
+        expand_for_topology(topology_graph, max_instances_per_compute=6)
+
+        # Step 7b: Apply layout (normalize called inside)
+        apply_layout(logical_graph, layout_strategy=layout_strategy, orientation="horizontal")
+        apply_layout(topology_graph, layout_strategy="layered_vertical", orientation="vertical")
+
+        # Keep backward compatibility: resolved_architecture.graph points to logical view
+        resolved_architecture.graph = logical_graph
+        logger.info("Layout applied (logical + topology)")
         
         # Step 8: Build complete architecture result
+        # Default graph = logical view
+        diagram_graph = logical_graph
         result = {
             "architecture_id": selected_architecture.architecture_id,
+            "architecture_pattern": architecture_pattern.type,
+            "layout_strategy": layout_strategy,
             "selected_architecture": jsonable_encoder(selected_architecture),
-            "graph": jsonable_encoder(graph),
+            "graph": jsonable_encoder(diagram_graph),
             "compliance_report": jsonable_encoder(compliance_report),
             "resolved_architecture": jsonable_encoder(resolved_architecture),
+            "views": {
+                "logical": {"graph": jsonable_encoder(logical_graph)},
+                "topology": {"graph": jsonable_encoder(topology_graph)},
+            },
             "warnings": [{"message": w.message, "severity": w.severity} for w in warnings]
         }
         
@@ -727,7 +668,7 @@ def get_architecture_graph():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/architecture/graph-with-products")
-def get_architecture_graph_with_products():
+def get_architecture_graph_with_products(view: str = "logical"):
     """
     Get architecture graph with resolved products embedded in nodes.
     This matches the plan document structure (Section 15.7).
@@ -739,7 +680,11 @@ def get_architecture_graph_with_products():
                 status_code=404,
                 detail="No synthesized architecture available. Please run synthesis first."
             )
-        # Return the resolved architecture graph (has products embedded in nodes)
+        v = (view or "logical").strip().lower()
+        views = latest_synthesized_architecture.get("views") or {}
+        if v in views and (views.get(v) or {}).get("graph") is not None:
+            return views[v]["graph"]
+        # Fallback: resolved architecture graph (logical view)
         return latest_synthesized_architecture["resolved_architecture"]["graph"]
     except HTTPException:
         raise
